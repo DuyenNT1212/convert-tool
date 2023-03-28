@@ -1,0 +1,32 @@
+[
+  {
+    "labels": {
+      "application": "DMS_Cholimex",
+      "mountpoint": "tomcat_8025"
+    },
+    "targets": [
+      "10.255.208.26:9105",
+      "10.255.208.27:9105"
+    ]
+  },
+  {
+    "labels": {
+      "application": "DMS_Cholimex",
+      "mountpoint": "tomcat_8111"
+    },
+    "targets": [
+      "10.255.208.26:9106",
+      "10.255.208.27:9106"
+    ]
+  },
+  {
+    "labels": {
+      "application": "DMS_Cholimex",
+      "mountpoint": "tomcat_8101"
+    },
+    "targets": [
+      "10.255.208.26:9107",
+      "10.255.208.27:9107"
+    ]
+  }
+]

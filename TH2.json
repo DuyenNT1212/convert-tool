@@ -1,0 +1,20 @@
+[
+  {
+    "labels": {
+      "application": "DMS_Cholimex"
+    }, 
+    "targets": [
+      "10.254.144.100:9100",
+      "10.254.144.101:9100"
+    ]
+  },
+  {
+    "labels": {
+      "application": "DMS_Cholimex2"
+    }, 
+    "targets": [
+      "10.254.145.92:9100",
+      "10.254.145.93:9100"
+    ]
+  }
+]

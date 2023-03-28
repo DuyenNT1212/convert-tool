@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <style>
+      .container {
+        margin: 20px;
+      }
+      .form-control {
+        margin-top: 20px;
+      }
+      .button {
+        margin: 7px;
+      }
+      .text-display {
+        float: left;
+        margin-right: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <form enctype="multipart/form-data">
+        <input id="upload" type="file" name="files[]" />
+      </form>
+
+      <div class="text-display">
+        <textarea
+          class="form-control"
+          rows="35"
+          cols="90%"
+          id="xlx_json"
+        ></textarea>
+        <div>
+          <p>Download file template</p>
+          <button class="button" onclick="downloadFileExporter()">
+            Exporter
+          </button>
+          <button class="button" onclick="downloadFileTomcat()">Tomcat</button>
+          <button class="button" onclick="downloadFileDomain()">Domain</button>
+        </div>
+      </div>
+      <p>Hướng dẫn cài đặt giám sát:</br>
+        -	Vào thư mục “/home/giamsat” trên 10.60.159.7</br>
+        -	Đưa file “prometheus.tar” lên server đích</br>
+        -	Giải nén file: tar –xvf prometheus.tar</br>
+        -	Đứng ở thu mục giải nén chạy script cho exporter cần cài đặt</br>
+        Sau khi các exporter đã hoạt động, các anh import file exel theo mẫu và gửi lại fiel json của từng hệ thống cho quangvd11 khai lên prometheus.</br>
+        Đối với tomcat khi chạy xong scrip cần cài restart ứng dụng, các anh lên kế hoạch để restart. File cấu hình mới có tên là “catalina-new.sh”.  Các bước:</br>
+        -	Backup file catalina.sh</br>
+        -	mv catalina-new.sh catalina.sh</br>
+        -	Restart tomcat</br>
+        -	Check log và gửi lại file json của hệ thống</br>
+      </p>
+    </div>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.8.0/jszip.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.13.1/xlsx.full.min.js"></script>
+    <script>
+      //Excel to json
+      var ExcelToJSON = function () {
+        this.parseExcel = function (file) {
+          var reader = new FileReader();
+
+          reader.onload = function (e) {
+            var data = e.target.result;
+            var workbook = XLSX.read(data, {
+              type: "binary",
+            });
+            const [columns] = XLSX.utils.sheet_to_json(
+              workbook.Sheets[workbook.SheetNames],
+              { header: 1 }
+            );
+            workbook.SheetNames.forEach(function (sheetName) {
+              var XL_row_object = XLSX.utils.sheet_to_row_object_array(
+                workbook.Sheets[sheetName]
+              );
+              let outputArray = [];
+              if (
+                columns.includes("mountpoint") ||
+                columns.includes("Tomcat_port")
+              ) {
+                // Tomcat
+                XL_row_object.forEach((obj) => {
+                  const application = obj["Tên hệ thống"];
+                  const mountpoint = obj["mountpoint"] || obj["Tomcat_port"];
+                  let existingObj = outputArray.find(
+                    (item) =>
+                      item.labels.application === application &&
+                      item.labels.mountpoint === mountpoint
+                  );
+                  if (existingObj) {
+                    existingObj.targets.push(obj["API_exporter"]);
+                  } else {
+                    const newObj = {
+                      labels: {
+                        application: application,
+                        mountpoint: mountpoint,
+                      },
+                      targets: [obj["API_exporter"]],
+                    };
+                    outputArray.push(newObj);
+                  }
+                });
+              } else if (columns.includes("Url")) {
+                // Domain
+                outputArray = XL_row_object.map((item) => ({
+                  labels: {
+                    application: item["Tên hệ thống"],
+                    mountpoint: item["Url"],
+                  },
+                  targets: [item["Url"]],
+                }));
+
+              } else {
+                //Exporter
+                XL_row_object.forEach((obj) => {
+                  const index = outputArray.findIndex(
+                    (item) => item.labels.application === obj["Tên hệ thống"]
+                  );
+                  if (index === -1) {
+                    outputArray.push({
+                      labels: {
+                        application: obj["Tên hệ thống"],
+                      },
+                      targets: [obj.API_exporter.replace(/\./g, ":")],
+                    });
+                  } else {
+                    outputArray[index].targets.push(
+                      obj.API_exporter.replace(/\./g, ":")
+                    );
+                  }
+                });
+              }
+              var json_object = JSON.stringify(outputArray, undefined, 2);
+              jQuery("#xlx_json").val(json_object);
+            });
+          };
+
+          reader.onerror = function (ex) {
+            console.log(ex);
+          };
+
+          reader.readAsBinaryString(file);
+        };
+      };
+
+      function handleFileSelect(evt) {
+        var files = evt.target.files;
+        var xl2json = new ExcelToJSON();
+        xl2json.parseExcel(files[0]);
+      }
+
+      // Download file template
+
+      function downloadExcelFile(fileName, data) {
+        var ws = XLSX.utils.json_to_sheet(data);
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+        XLSX.writeFile(wb, `${fileName}.xlsx`);
+      }
+
+      function downloadFileExporter() {
+        const fileName = "Exporter";
+        const data = [
+          {
+            "Tên hệ thống": "DMS_Cholimex",
+            API_exporter: "10.254.145.161:9100",
+          },
+          {
+            "Tên hệ thống": "DMS_Cholimex",
+            API_exporter: "10.254.145.162:9100",
+          },
+        ];
+        downloadExcelFile(fileName, data);
+      }
+
+      function downloadFileTomcat() {
+        const fileName = "Tomcat";
+        const data = [
+          {
+            "Tên hệ thống": "DMS_Cholimex",
+            API_exporter: "10.254.145.161:9100",
+            Tomcat_port: "tomcat_8111",
+          },
+          {
+            "Tên hệ thống": "DMS_Cholimex",
+            API_exporter: "10.254.145.162:9100",
+            Tomcat_port: "tomcat_8111",
+          },
+        ];
+        downloadExcelFile(fileName, data);
+      }
+
+      function downloadFileDomain() {
+        const fileName = "Domain";
+        const data = [
+          {
+            "Tên hệ thống": "DMS_Cholimex",
+            Url: "http://monitoring.gpdn.net:8801/",
+          },
+        ];
+        downloadExcelFile(fileName, data);
+      }
+    </script>
+
+    <script>
+      document
+        .getElementById("upload")
+        .addEventListener("change", handleFileSelect, false);
+    </script>
+  </body>
+</html>
