@@ -41,27 +41,28 @@
         </div>
       </div>
       <p>Hướng dẫn cài đặt giám sát:</br>
-        -	Vào thư mục “/home/giamsat” trên 10.60.159.7</br>
-        -	Đưa file “prometheus.tar” lên server đích</br>
-        -	Giải nén file: tar –xvf prometheus.tar</br>
-        -	Đứng ở thu mục giải nén chạy script cho exporter cần cài đặt</br>
-        Sau khi các exporter đã hoạt động, các anh import file exel theo mẫu và gửi lại fiel json của từng hệ thống cho quangvd11 khai lên prometheus.</br>
-        Đối với tomcat khi chạy xong scrip cần cài restart ứng dụng, các anh lên kế hoạch để restart. File cấu hình mới có tên là “catalina-new.sh”.  Các bước:</br>
-        -	Backup file catalina.sh</br>
-        -	mv catalina-new.sh catalina.sh</br>
-        -	Restart tomcat</br>
-        -	Check log và gửi lại file json của hệ thống</br>
-      </p>
+        - Vào thư mục “/home/giamsat” trên 10.60.159.7</br>
+        - Đưa file “prometheus.tar” lên server đích</br>
+        - Giải nén file: tar –xvf prometheus.tar</br>
+        - Đứng ở thu mục giải nén chạy script cho exporter cần cài đặt</br>
+        Sau khi các exporter đã hoạt động, các anh import file exel theo mẫu và gửi lại file json của từng hệ thống cho quangvd11 khai lên prometheus.</br>
+        Đối với tomcat khi chạy xong script cần cài restart ứng dụng, các anh lên kế hoạch để restart. File cấu hình mới có tên là “catalina-new.sh”. Các bước:</br>
+        - Backup file catalina.sh</br>
+        - mv catalina-new.sh catalina.sh</br>
+        - Restart tomcat</br>
+        - Check log và gửi lại file json của hệ thống</p>
     </div>
 
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.8.0/jszip.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.13.1/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
       //Excel to json
       var ExcelToJSON = function () {
         this.parseExcel = function (file) {
           var reader = new FileReader();
+          const zip = new JSZip();
 
           reader.onload = function (e) {
             var data = e.target.result;
@@ -76,12 +77,13 @@
               var XL_row_object = XLSX.utils.sheet_to_row_object_array(
                 workbook.Sheets[sheetName]
               );
+              console.log("XL_row_object", XL_row_object);
               let outputArray = [];
               if (
                 columns.includes("mountpoint") ||
                 columns.includes("Tomcat_port")
               ) {
-                // Tomcat
+                // TOMCAT
                 XL_row_object.forEach((obj) => {
                   const application = obj["Tên hệ thống"];
                   const mountpoint = obj["mountpoint"] || obj["Tomcat_port"];
@@ -103,8 +105,25 @@
                     outputArray.push(newObj);
                   }
                 });
+                let outputDownload = outputArray.reduce((acc, curr) => {
+                  const key = curr.labels.application;
+                  const matchingObj = acc.find(
+                    (obj) => obj[0].labels.application === key
+                  );
+                  if (matchingObj) {
+                    matchingObj.push(curr);
+                  } else {
+                    acc.push([curr]);
+                  }
+                  return acc;
+                }, []);
+                outputDownload.forEach((obj) => {
+                  let name = `${obj[0].labels.application}.json`;
+                  zip.file(name, JSON.stringify(obj, undefined, 2));
+                });
+                downloadResult(zip, "Tomcat_result.zip");
               } else if (columns.includes("Url")) {
-                // Domain
+                // DOMAIN
                 outputArray = XL_row_object.map((item) => ({
                   labels: {
                     application: item["Tên hệ thống"],
@@ -112,26 +131,61 @@
                   },
                   targets: [item["Url"]],
                 }));
-
-              } else {
-                //Exporter
-                XL_row_object.forEach((obj) => {
-                  const index = outputArray.findIndex(
-                    (item) => item.labels.application === obj["Tên hệ thống"]
+                let outputDownload = outputArray.reduce((acc, curr) => {
+                  const key = curr.labels.application;
+                  const matchingObj = acc.find(
+                    (obj) => obj[0].labels.application === key
                   );
-                  if (index === -1) {
+                  if (matchingObj) {
+                    matchingObj.push(curr);
+                  } else {
+                    acc.push([curr]);
+                  }
+                  return acc;
+                }, []);
+                outputDownload.forEach((obj) => {
+                  let name = `${obj[0].labels.application}.json`;
+                  zip.file(name, JSON.stringify(obj, undefined, 2));
+                });
+                downloadResult(zip, "Domain_result.zip");
+              } else {
+                // EXPORTER
+                XL_row_object.forEach((obj) => {
+                  const application = obj["Tên hệ thống"];
+                  const apiExporter = obj["API_exporter"];
+                  const technology = obj["Technology"];
+
+                  let targets = [apiExporter];
+
+                  const existingObjIndex = outputArray.findIndex(
+                    (item) =>
+                      item.labels.application === application &&
+                      item.technology === technology
+                  );
+
+                  if (existingObjIndex !== -1) {
+                    outputArray[existingObjIndex].targets.push(...targets);
+                  } else {
                     outputArray.push({
                       labels: {
-                        application: obj["Tên hệ thống"],
+                        application,
                       },
-                      targets: [obj.API_exporter.replace(/\./g, ":")],
+                      targets,
+                      technology,
                     });
-                  } else {
-                    outputArray[index].targets.push(
-                      obj.API_exporter.replace(/\./g, ":")
-                    );
                   }
                 });
+                outputArray.forEach((obj) => {
+                  let name = `${obj.technology}_${obj.labels.application}.json`;
+                  let newObj = [
+                    {
+                      labels: obj.labels,
+                      targets: obj.targets,
+                    },
+                  ];
+                  zip.file(name, JSON.stringify(newObj, undefined, 2));
+                });
+                downloadResult(zip, "Exporter_result.zip");
               }
               var json_object = JSON.stringify(outputArray, undefined, 2);
               jQuery("#xlx_json").val(json_object);
@@ -152,6 +206,18 @@
         xl2json.parseExcel(files[0]);
       }
 
+      // Download file result
+      function downloadResult(zip, fileName) {
+        zip.generateAsync({ type: "blob" }).then(function (blob) {
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        });
+      }
+
       // Download file template
 
       function downloadExcelFile(fileName, data) {
@@ -167,10 +233,17 @@
           {
             "Tên hệ thống": "DMS_Cholimex",
             API_exporter: "10.254.145.161:9100",
+            Technology: "linux",
           },
           {
             "Tên hệ thống": "DMS_Cholimex",
             API_exporter: "10.254.145.162:9100",
+            Technology: "window",
+          },
+          {
+            "Tên hệ thống": "DMS_YBI",
+            API_exporter: "10.254.145.162:9100",
+            Technology: "haproxy",
           },
         ];
         downloadExcelFile(fileName, data);
